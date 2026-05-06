@@ -1,4 +1,5 @@
 import { useState } from "react"
+import * as XLSX from "xlsx"
 
 const PRODUCTS = [
   '小花醬','大花醬','小花茶','大花茶','花瓣','花瓣粉',
@@ -39,11 +40,8 @@ export default function App() {
   function toggleProduct(name) {
     setSelected(prev => {
       const next = Object.assign({}, prev)
-      if (next[name]) {
-        delete next[name]
-      } else {
-        next[name] = 1
-      }
+      if (next[name]) delete next[name]
+      else next[name] = 1
       return next
     })
   }
@@ -52,11 +50,8 @@ export default function App() {
     setSelected(prev => {
       const next = Object.assign({}, prev)
       const newQty = (next[name] || 1) + delta
-      if (newQty <= 0) {
-        delete next[name]
-      } else {
-        next[name] = newQty
-      }
+      if (newQty <= 0) delete next[name]
+      else next[name] = newQty
       return next
     })
   }
@@ -77,6 +72,41 @@ export default function App() {
     setCustomerName('')
     setOtherDesc('')
     alert('出貨單已建立！')
+  }
+
+  function exportShipmentExcel() {
+    if (shipments.length === 0) { alert('還沒有出貨記錄'); return }
+    const rows = []
+    shipments.forEach(s => {
+      s.items.forEach(item => {
+        rows.push({
+          日期: s.date,
+          客戶: s.customer,
+          商品: item.name,
+          數量: item.qty,
+          其他說明: s.otherDesc || ''
+        })
+      })
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '出貨記錄')
+    XLSX.writeFile(wb, '出貨記錄.xlsx')
+  }
+
+  function exportExpenseExcel() {
+    if (expenses.length === 0) { alert('還沒有支出記錄'); return }
+    const rows = expenses.map(e => ({
+      日期: e.date,
+      紀錄人: e.recorder,
+      類別: e.type,
+      金額: e.amount,
+      備註: e.note || ''
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '支出記錄')
+    XLSX.writeFile(wb, '支出記錄.xlsx')
   }
 
   function updateSupply(i, qty) {
@@ -242,7 +272,11 @@ export default function App() {
 
         {tab === 'records' && (
           <div>
-            <div style={sectionTitle}>出貨記錄</div>
+            <button onClick={exportShipmentExcel} style={{...btnStyle, background: '#22a06b', marginTop: 0}}>
+              📊 匯出出貨記錄 Excel
+            </button>
+
+            <div style={{...sectionTitle, marginTop: 16}}>出貨記錄</div>
             {shipments.length === 0 && (
               <div style={{ color: '#999', fontSize: 13, textAlign: 'center', padding: 20 }}>還沒有出貨記錄</div>
             )}
@@ -262,7 +296,11 @@ export default function App() {
               </div>
             ))}
 
-            <div style={{ ...sectionTitle, marginTop: 20 }}>支出記錄</div>
+            <button onClick={exportExpenseExcel} style={{...btnStyle, background: '#22a06b', marginTop: 16}}>
+              📊 匯出支出記錄 Excel
+            </button>
+
+            <div style={{...sectionTitle, marginTop: 16}}>支出記錄</div>
             {expenses.length === 0 && (
               <div style={{ color: '#999', fontSize: 13, textAlign: 'center', padding: 20 }}>還沒有支出記錄</div>
             )}
