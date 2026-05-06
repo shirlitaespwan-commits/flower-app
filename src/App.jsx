@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import * as XLSX from "xlsx"
 
 const PRODUCTS = [
@@ -19,6 +19,19 @@ const btnStyle = { width: '100%', padding: 10, background: '#534AB7', color: 'wh
 const editBtnStyle = { padding: '5px 10px', fontSize: 12, background: 'transparent', border: '1px solid #ddd', borderRadius: 6, cursor: 'pointer', color: '#666' }
 const sectionTitle = { fontSize: 11, fontWeight: 600, color: '#999', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }
 
+function useLocalStorage(key, initial) {
+  const [value, setValue] = useState(() => {
+    try {
+      const saved = localStorage.getItem(key)
+      return saved ? JSON.parse(saved) : initial
+    } catch { return initial }
+  })
+  useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(value))
+  }, [key, value])
+  return [value, setValue]
+}
+
 export default function App() {
   const [tab, setTab] = useState('shipment')
   const [date, setDate] = useState(today())
@@ -26,16 +39,18 @@ export default function App() {
   const [customerName, setCustomerName] = useState('')
   const [selected, setSelected] = useState({})
   const [otherDesc, setOtherDesc] = useState('')
-  const [shipments, setShipments] = useState([])
-  const [supplies, setSupplies] = useState(
+
+  const [shipments, setShipments] = useLocalStorage('shipments', [])
+  const [supplies, setSupplies] = useLocalStorage('supplies',
     SUPPLIES.map(name => ({ name, qty: 0, date: today() }))
   )
+  const [expenses, setExpenses] = useLocalStorage('expenses', [])
+
   const [recorder, setRecorder] = useState('小淇')
   const [expDate, setExpDate] = useState(today())
   const [expType, setExpType] = useState('運費')
   const [expAmount, setExpAmount] = useState('')
   const [expNote, setExpNote] = useState('')
-  const [expenses, setExpenses] = useState([])
 
   function toggleProduct(name) {
     setSelected(prev => {
@@ -72,6 +87,16 @@ export default function App() {
     setCustomerName('')
     setOtherDesc('')
     alert('出貨單已建立！')
+  }
+
+  function deleteShipment(id) {
+    if (!window.confirm('確定要刪除這筆出貨記錄？')) return
+    setShipments(prev => prev.filter(s => s.id !== id))
+  }
+
+  function deleteExpense(id) {
+    if (!window.confirm('確定要刪除這筆支出記錄？')) return
+    setExpenses(prev => prev.filter(e => e.id !== id))
   }
 
   function exportShipmentExcel() {
@@ -282,9 +307,12 @@ export default function App() {
             )}
             {shipments.map(s => (
               <div key={s.id} style={{ padding: '10px 0', borderBottom: '1px solid #f5f5f5' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{s.customer}</span>
-                  <span style={{ fontSize: 12, color: '#999' }}>{s.date}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#999' }}>{s.date}</span>
+                    <button onClick={() => deleteShipment(s.id)} style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: '1px solid #ffb3b3', borderRadius: 6, color: '#e53e3e', cursor: 'pointer' }}>刪除</button>
+                  </div>
                 </div>
                 <div>
                   {s.items.map(item => (
@@ -306,9 +334,12 @@ export default function App() {
             )}
             {expenses.map(e => (
               <div key={e.id} style={{ padding: '10px 0', borderBottom: '1px solid #f5f5f5' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{e.type} — NT${e.amount}</span>
-                  <span style={{ fontSize: 12, color: '#999' }}>{e.date}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#999' }}>{e.date}</span>
+                    <button onClick={() => deleteExpense(e.id)} style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: '1px solid #ffb3b3', borderRadius: 6, color: '#e53e3e', cursor: 'pointer' }}>刪除</button>
+                  </div>
                 </div>
                 <div style={{ fontSize: 12, color: '#888' }}>記錄人：{e.recorder}{e.note ? `　${e.note}` : ''}</div>
               </div>
