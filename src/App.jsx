@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react"
 import * as XLSX from "xlsx"
+import { db } from "./firebase"
+import {
+  collection, addDoc, deleteDoc, doc, onSnapshot, setDoc
+} from "firebase/firestore"
 
 const PRODUCTS = [
   '小花醬','大花醬','小花茶','大花茶','花瓣','花瓣粉',
@@ -19,19 +23,6 @@ const btnStyle = { width: '100%', padding: 10, background: '#534AB7', color: 'wh
 const editBtnStyle = { padding: '5px 10px', fontSize: 12, background: 'transparent', border: '1px solid #ddd', borderRadius: 6, cursor: 'pointer', color: '#666' }
 const sectionTitle = { fontSize: 11, fontWeight: 600, color: '#999', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }
 
-function useLocalStorage(key, initial) {
-  const [value, setValue] = useState(() => {
-    try {
-      const saved = localStorage.getItem(key)
-      return saved ? JSON.parse(saved) : initial
-    } catch { return initial }
-  })
-  useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(value))
-  }, [key, value])
-  return [value, setValue]
-}
-
 export default function App() {
   const [tab, setTab] = useState('shipment')
   const [date, setDate] = useState(today())
@@ -39,18 +30,47 @@ export default function App() {
   const [customerName, setCustomerName] = useState('')
   const [selected, setSelected] = useState({})
   const [otherDesc, setOtherDesc] = useState('')
-
-  const [shipments, setShipments] = useLocalStorage('shipments', [])
-  const [supplies, setSupplies] = useLocalStorage('supplies',
+  const [shipments, setShipments] = useState([])
+  const [supplies, setSupplies] = useState(
     SUPPLIES.map(name => ({ name, qty: 0, date: today() }))
   )
-  const [expenses, setExpenses] = useLocalStorage('expenses', [])
-
+  const [expenses, setExpenses] = useState([])
   const [recorder, setRecorder] = useState('小淇')
   const [expDate, setExpDate] = useState(today())
   const [expType, setExpType] = useState('運費')
   const [expAmount, setExpAmount] = useState('')
   const [expNote, setExpNote] = useState('')
+
+  // 即時同步出貨記錄
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'shipments'), snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      data.sort((a, b) => b.createdAt - a.createdAt)
+      setShipments(data)
+    })
+    return unsub
+  }, [])
+
+  // 即時同步支出記錄
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'expenses'), snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      data.sort((a, b) => b.createdAt - a.createdAt)
+      setExpenses(data)
+    })
+    return unsub
+  }, [])
+
+  // 即時同步耗材
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'supplies'), snap => {
+      if (snap.docs.length > 0) {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        setSupplies(data)
+      }
+    })
+    return unsub
+  }, [])
 
   function toggleProduct(name) {
     setSelected(prev => {
@@ -71,17 +91,17 @@ export default function App() {
     })
   }
 
-  function submitShipment() {
+  async function submitShipment() {
     if (!customer) { alert('請選擇客戶'); return }
     if (Object.keys(selected).length === 0) { alert('請選擇商品'); return }
     const record = {
-      id: Date.now(),
+      createdAt: Date.now(),
       date,
       customer: (customer === 'b2b' || customer === '面交') ? (customerName || customer) : customer,
       items: Object.keys(selected).map(name => ({ name, qty: selected[name] })),
       otherDesc
     }
-    setShipments(prev => [record, ...prev])
+    await addDoc(collection(db, 'shipments'), record)
     setSelected({})
     setCustomer('')
     setCustomerName('')
@@ -89,14 +109,40 @@ export default function App() {
     alert('出貨單已建立！')
   }
 
-  function deleteShipment(id) {
+  async function deleteShipment(id) {
     if (!window.confirm('確定要刪除這筆出貨記錄？')) return
-    setShipments(prev => prev.filter(s => s.id !== id))
+    await deleteDoc(doc(db, 'shipments', id))
   }
 
-  function deleteExpense(id) {
+  async function deleteExpense(id) {
     if (!window.confirm('確定要刪除這筆支出記錄？')) return
-    setExpenses(prev => prev.filter(e => e.id !== id))
+    await deleteDoc(doc(db, 'expenses', id))
+  }
+
+  async function updateSupply(i, qty) {
+    const s = supplies[i]
+    const updated = { name: s.name, qty: Number(qty), date: today() }
+    if (s.id) {
+      await setDoc(doc(db, 'supplies', s.id), updated)
+    } else {
+      await addDoc(collection(db, 'supplies'), updated)
+    }
+  }
+
+  async function submitExpense() {
+    if (!expAmount) { alert('請輸入金額'); return }
+    const record = {
+      createdAt: Date.now(),
+      recorder,
+      date: expDate,
+      type: expType,
+      amount: expAmount,
+      note: expNote
+    }
+    await addDoc(collection(db, 'expenses'), record)
+    setExpAmount('')
+    setExpNote('')
+    alert('支出已記錄！')
   }
 
   function exportShipmentExcel() {
@@ -132,28 +178,6 @@ export default function App() {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '支出記錄')
     XLSX.writeFile(wb, '支出記錄.xlsx')
-  }
-
-  function updateSupply(i, qty) {
-    setSupplies(prev => prev.map((s, idx) =>
-      idx === i ? { ...s, qty: Number(qty), date: today() } : s
-    ))
-  }
-
-  function submitExpense() {
-    if (!expAmount) { alert('請輸入金額'); return }
-    const record = {
-      id: Date.now(),
-      recorder,
-      date: expDate,
-      type: expType,
-      amount: expAmount,
-      note: expNote
-    }
-    setExpenses(prev => [record, ...prev])
-    setExpAmount('')
-    setExpNote('')
-    alert('支出已記錄！')
   }
 
   return (
