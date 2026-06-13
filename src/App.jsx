@@ -40,8 +40,8 @@ export default function App() {
   const [expType, setExpType] = useState('運費')
   const [expAmount, setExpAmount] = useState('')
   const [expNote, setExpNote] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(today().slice(0,7))
 
-  // 即時同步出貨記錄
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'shipments'), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -51,7 +51,6 @@ export default function App() {
     return unsub
   }, [])
 
-  // 即時同步支出記錄
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'expenses'), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -61,7 +60,6 @@ export default function App() {
     return unsub
   }, [])
 
-  // 即時同步耗材
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'supplies'), snap => {
       if (snap.docs.length > 0) {
@@ -146,9 +144,10 @@ export default function App() {
   }
 
   function exportShipmentExcel() {
-    if (shipments.length === 0) { alert('還沒有出貨記錄'); return }
+    const filtered = shipments.filter(s => s.date.slice(0,7) === selectedMonth)
+    if (filtered.length === 0) { alert('本月沒有出貨記錄'); return }
     const rows = []
-    shipments.forEach(s => {
+    filtered.forEach(s => {
       s.items.forEach(item => {
         rows.push({
           日期: s.date,
@@ -162,12 +161,13 @@ export default function App() {
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '出貨記錄')
-    XLSX.writeFile(wb, '出貨記錄.xlsx')
+    XLSX.writeFile(wb, `出貨記錄_${selectedMonth}.xlsx`)
   }
 
   function exportExpenseExcel() {
-    if (expenses.length === 0) { alert('還沒有支出記錄'); return }
-    const rows = expenses.map(e => ({
+    const filtered = expenses.filter(e => e.date.slice(0,7) === selectedMonth)
+    if (filtered.length === 0) { alert('本月沒有支出記錄'); return }
+    const rows = filtered.map(e => ({
       日期: e.date,
       紀錄人: e.recorder,
       類別: e.type,
@@ -177,8 +177,17 @@ export default function App() {
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '支出記錄')
-    XLSX.writeFile(wb, '支出記錄.xlsx')
+    XLSX.writeFile(wb, `支出記錄_${selectedMonth}.xlsx`)
   }
+
+  const monthOptions = Array.from(new Set([
+    ...shipments.map(s => s.date.slice(0,7)),
+    ...expenses.map(e => e.date.slice(0,7)),
+    today().slice(0,7)
+  ])).sort().reverse()
+
+  const filteredShipments = shipments.filter(s => s.date.slice(0,7) === selectedMonth)
+  const filteredExpenses = expenses.filter(e => e.date.slice(0,7) === selectedMonth)
 
   return (
     <div style={{ maxWidth: 420, margin: '0 auto', fontFamily: 'sans-serif', border: '1px solid #eee', borderRadius: 12, overflow: 'hidden' }}>
@@ -321,15 +330,22 @@ export default function App() {
 
         {tab === 'records' && (
           <div>
-            <button onClick={exportShipmentExcel} style={{...btnStyle, background: '#22a06b', marginTop: 0}}>
+            <label style={labelStyle}>選擇月份</label>
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={inputStyle}>
+              {monthOptions.map(m => (
+                <option key={m} value={m}>{m.slice(0,4)}年{m.slice(5,7)}月</option>
+              ))}
+            </select>
+
+            <button onClick={exportShipmentExcel} style={{...btnStyle, background: '#22a06b'}}>
               📊 匯出出貨記錄 Excel
             </button>
 
             <div style={{...sectionTitle, marginTop: 16}}>出貨記錄</div>
-            {shipments.length === 0 && (
-              <div style={{ color: '#999', fontSize: 13, textAlign: 'center', padding: 20 }}>還沒有出貨記錄</div>
+            {filteredShipments.length === 0 && (
+              <div style={{ color: '#999', fontSize: 13, textAlign: 'center', padding: 20 }}>本月沒有出貨記錄</div>
             )}
-            {shipments.map(s => (
+            {filteredShipments.map(s => (
               <div key={s.id} style={{ padding: '10px 0', borderBottom: '1px solid #f5f5f5' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{s.customer}</span>
@@ -353,10 +369,10 @@ export default function App() {
             </button>
 
             <div style={{...sectionTitle, marginTop: 16}}>支出記錄</div>
-            {expenses.length === 0 && (
-              <div style={{ color: '#999', fontSize: 13, textAlign: 'center', padding: 20 }}>還沒有支出記錄</div>
+            {filteredExpenses.length === 0 && (
+              <div style={{ color: '#999', fontSize: 13, textAlign: 'center', padding: 20 }}>本月沒有支出記錄</div>
             )}
-            {expenses.map(e => (
+            {filteredExpenses.map(e => (
               <div key={e.id} style={{ padding: '10px 0', borderBottom: '1px solid #f5f5f5' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{e.type} — NT${e.amount}</span>
