@@ -143,27 +143,55 @@ export default function App() {
     alert('支出已記錄！')
   }
 
-  function exportShipmentExcel() {
-    const filtered = shipments.filter(s => s.date.slice(0,7) === selectedMonth)
-    if (filtered.length === 0) { alert('本月沒有出貨記錄'); return }
-    const rows = []
-    filtered.forEach(s => {
-      s.items.forEach(item => {
-        rows.push({
-          日期: s.date,
-          客戶: s.customer,
-          商品: item.name,
-          數量: item.qty,
-          其他說明: s.otherDesc || ''
-        })
-      })
-    })
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '出貨記錄')
-    XLSX.writeFile(wb, `出貨記錄_${selectedMonth}.xlsx`)
+ function exportShipmentExcel() {
+  const filtered = shipments.filter(s => s.date.slice(0,7) === selectedMonth)
+  if (filtered.length === 0) { alert('本月沒有出貨記錄'); return }
+
+  const COST = {
+    '小花醬': 60, '大花醬': 110, '小花茶': 64, '大花茶': 200,
+    '花瓣': 104, '花瓣粉': 500, '牛奶棒': 121, '純露': 120,
+    '玫瑰蜂蜜': 200, '鮮花一公斤': 1200, '鮮花100g': 120,
+    '花醬一公斤': 440, '糖多花醬一公斤': 200, '禮盒花醬': 84,
+    '禮盒花茶': 64, '其他': 0
   }
 
+  // 第一張：原始記錄
+  const rows = []
+  filtered.forEach(s => {
+    s.items.forEach(item => {
+      const cost = COST[item.name] || 0
+      rows.push({
+        日期: s.date,
+        客戶: s.customer,
+        商品: item.name,
+        數量: item.qty,
+        單位成本: cost,
+        總成本: cost * item.qty,
+        其他說明: s.otherDesc || ''
+      })
+    })
+  })
+
+  // 第二張：彙總表
+  const summary = {}
+  rows.forEach(r => {
+    if (!summary[r.商品]) {
+      summary[r.商品] = { 商品: r.商品, 總數量: 0, 單位成本: r.單位成本, 總成本: 0 }
+    }
+    summary[r.商品].總數量 += r.數量
+    summary[r.商品].總成本 += r.總成本
+  })
+  const summaryRows = Object.values(summary)
+  const totalCost = summaryRows.reduce((sum, r) => sum + r.總成本, 0)
+  summaryRows.push({ 商品: '合計', 總數量: '', 單位成本: '', 總成本: totalCost })
+
+  const wb = XLSX.utils.book_new()
+  const ws1 = XLSX.utils.json_to_sheet(rows)
+  const ws2 = XLSX.utils.json_to_sheet(summaryRows)
+  XLSX.utils.book_append_sheet(wb, ws1, '原始記錄')
+  XLSX.utils.book_append_sheet(wb, ws2, '彙總表')
+  XLSX.writeFile(wb, `出貨記錄_${selectedMonth}.xlsx`)
+}
   function exportExpenseExcel() {
     const filtered = expenses.filter(e => e.date.slice(0,7) === selectedMonth)
     if (filtered.length === 0) { alert('本月沒有支出記錄'); return }
